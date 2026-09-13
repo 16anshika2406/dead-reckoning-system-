@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Store Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* ── Neon + Liquid palette ── */
+    :root {
+      --neon-rev:    #c8f0ff;
+      --neon-prof:   #6ee7b7;
+      --neon-order:  #a78bfa;
+      /* liquid glass layers */
+      --liq-bg:      rgba(255,255,255,.032);
+      --liq-border:  rgba(255,255,255,.09);
+      --liq-shine:   rgba(255,255,255,.07);
+      --liq-glow-b:  rgba(200,240,255,.08);
+      --liq-glow-g:  rgba(110,231,183,.06);
+      --liq-blur:    18px;
+    }
+
+    /* ── Ambient blobs behind everything ── */
+    body::before, body::after {
+      content: ''; position: fixed; border-radius: 50%;
+      pointer-events: none; z-index: 0; filter: blur(80px);
+      animation: blobDrift 18s ease-in-out infinite alternate;
+    }
+    body::before {
+      width: 420px; height: 420px;
+      background: radial-gradient(circle, rgba(200,240,255,.07), transparent 70%);
+      top: -80px; left: -120px;
+    }
+    body::after {
+      width: 380px; height: 380px;
+      background: radial-gradient(circle, rgba(110,231,183,.055), transparent 70%);
+      bottom: 60px; right: -100px;
+      animation-delay: -9s; animation-duration: 22s;
+    }
+    @keyframes blobDrift {
+      0%   { transform: translate(0,0) scale(1); }
+      50%  { transform: translate(30px,20px) scale(1.06); }
+      100% { transform: translate(-20px,40px) scale(.96); }
+    }
+
+    /* ── Base wrap ── */
+    .stats-wrap { max-width: 700px; margin: 0 auto; padding: calc(54px + 16px) 14px 60px; position: relative; z-index: 1; }
+
+    /* ── Nav ── */
+    .nav {
+      position: fixed; top: 0; left: 0; width: 100%; z-index: 9999;
+      background: rgba(10,10,14,.55);
+      backdrop-filter: blur(32px) saturate(200%);
+      -webkit-backdrop-filter: blur(32px) saturate(200%);
+      border-bottom: 1px solid var(--liq-border);
+      box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 8px 40px rgba(0,0,0,.5);
+    }
+    .nav::after {
+      content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(200,240,255,.18), rgba(110,231,183,.12), transparent);
+      pointer-events: none;
+    }
+    .nav-logo {
+      font-family: var(--f-head); font-size: .92rem; font-weight: 700;
+      color: var(--t1); text-decoration: none; letter-spacing: -.02em;
+    }
+
+    /* ── Section titles ── */
+    .stats-section-title {
+      font-family: var(--f-head); font-size: .72rem; font-weight: 700;
+      color: var(--t3); text-transform: uppercase; letter-spacing: .1em;
+      margin: 28px 0 10px;
+    }
+    .stats-section-title::before {
+      content: ''; display: inline-block; width: 3px; height: .7em;
+      background: linear-gradient(180deg, var(--neon-rev), var(--neon-prof));
+      border-radius: 2px; margin-right: 7px; vertical-align: middle;
+      box-shadow: 0 0 8px rgba(200,240,255,.5); opacity: .7;
+    }
+
+    /* ════════════════════════════════════
+       LIQUID GLASS mixin — applied to all cards
+       ════════════════════════════════════ */
+    .liq {
+      background: var(--liq-bg);
+      backdrop-filter: blur(var(--liq-blur)) saturate(160%);
+      -webkit-backdrop-filter: blur(var(--liq-blur)) saturate(160%);
+      border: 1px solid var(--liq-border);
+      position: relative; overflow: hidden;
+    }
+    /* top shine streak */
+    .liq::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent 5%, rgba(255,255,255,.14) 40%, rgba(200,240,255,.1) 60%, transparent 95%);
+      pointer-events: none; z-index: 1;
+    }
+    /* inner wet-surface gradient */
+    .liq::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.04) 0%, transparent 50%, rgba(200,240,255,.025) 100%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── KPI strip ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (min-width: 500px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+    .kpi-card {
+      border-radius: 14px; padding: 14px 12px;
+      display: flex; flex-direction: column; gap: 4px;
+      transition: border-color .25s, box-shadow .25s, transform .25s;
+      box-shadow: 0 4px 24px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.04);
+    }
+    .kpi-card:hover {
+      border-color: rgba(200,240,255,.22);
+      box-shadow: 0 8px 32px rgba(0,0,0,.3), 0 0 20px rgba(200,240,255,.08), inset 0 1px 0 rgba(200,240,255,.07);
+      transform: translateY(-1px);
+    }
+    .kpi-icon { color: var(--t3); margin-bottom: 4px; }
+    .kpi-val {
+      font-family: var(--f-mono); font-size: 1.2rem; font-weight: 700;
+      color: var(--t1); letter-spacing: -.02em;
+      text-shadow: 0 0 22px rgba(200,240,255,.28);
+    }
+    .kpi-lbl { font-size: .62rem; color: var(--t3); font-family: var(--f-head); text-transform: uppercase; letter-spacing: .07em; }
+    .kpi-delta { font-size: .62rem; font-family: var(--f-mono); margin-top: 2px; }
+    .kpi-delta.up   { color: #6ee7b7; text-shadow: 0 0 10px rgba(110,231,183,.4); }
+    .kpi-delta.down { color: var(--red); }
+    .kpi-delta.neutral { color: var(--t3); }
+
+    /* ── Chart cards ── */
+    .chart-card {
+      border-radius: 16px; padding: 16px; margin-bottom: 10px;
+      box-shadow: 0 4px 32px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.04);
+    }
+    .chart-title {
+      font-family: var(--f-head); font-size: .78rem; font-weight: 600;
+      color: var(--t1); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .chart-title svg { color: rgba(200,240,255,.35); }
+    .chart-wrap { position: relative; height: 180px; }
+
+    /* ── Period selector ── */
+    .period-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .period-btn {
+      padding: 5px 12px; border-radius: 99px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.03);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      color: var(--t3); font-family: var(--f-mono);
+      font-size: .62rem; cursor: pointer; transition: all .18s; font-weight: 600;
+      letter-spacing: .04em;
+    }
+    .period-btn:hover {
+      color: var(--t2); border-color: rgba(200,240,255,.18);
+      background: rgba(200,240,255,.05);
+      box-shadow: 0 0 10px rgba(200,240,255,.06);
+    }
+    .period-btn.active {
+      background: rgba(200,240,255,.08);
+      border-color: rgba(200,240,255,.28);
+      color: var(--neon-rev);
+      box-shadow: 0 0 14px rgba(200,240,255,.12), inset 0 1px 0 rgba(200,240,255,.1);
+      text-shadow: 0 0 8px rgba(200,240,255,.55);
+    }
+
+    /* ── Top items list ── */
+    .item-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .item-row:last-child { border-bottom: none; }
+    .item-rank { font-family: var(--f-mono); font-size: .62rem; color: var(--t3); width: 18px; text-align: center; flex-shrink: 0; }
+    .item-bar-wrap { flex: 1; min-width: 0; }
+    .item-name { font-size: .78rem; font-weight: 600; color: var(--t1); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-bar-track { height: 3px; background: rgba(255,255,255,.05); border-radius: 99px; overflow: hidden; }
+    .item-bar-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, rgba(200,240,255,.6), rgba(110,231,183,.35));
+      box-shadow: 0 0 8px rgba(200,240,255,.22);
+      transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .item-meta { font-family: var(--f-mono); font-size: .64rem; color: var(--t2); white-space: nowrap; text-align: right; flex-shrink: 0; }
+    .item-meta span { display: block; color: var(--t3); font-size: .58rem; margin-top: 1px; }
+
+    /* ── Suggestion cards ── */
+    .suggestion-card {
+      border-radius: 12px; padding: 14px;
+      margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start;
+      box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    }
+    .suggestion-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .suggestion-title { font-size: .78rem; font-weight: 600; color: var(--t1); margin-bottom: 3px; }
+    .suggestion-body { font-size: .7rem; color: var(--t3); line-height: 1.55; }
+
+    /* ── Loading ── */
+    .stats-loading { text-align: center; padding: 60px 0; color: var(--t3); font-size: .76rem; }
+    .stats-spinner {
+      width: 24px; height: 24px;
+      border: 2px solid rgba(200,240,255,.1);
+      border-top-color: rgba(200,240,255,.65);
+      border-radius: 50%; animation: spin .75s linear infinite;
+      margin: 0 auto 12px;
+      box-shadow: 0 0 14px rgba(200,240,255,.18);
+    }
+
+    /* ── Period label ── */
+    .period-label { font-size: .64rem; color: var(--t3); font-family: var(--f-mono); margin-left: auto; }
+
+    /* ── Busiest Days cards ── */
+    .dow-grid { display: flex; flex-direction: column; gap: 5px; }
+    .dow-cell {
+      display: grid; grid-template-columns: 28px 1fr auto;
+      align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 10px;
+      background: rgba(255,255,255,.025);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.06);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .dow-cell.dow-peak {
+      border-color: rgba(200,240,255,.24);
+      background: rgba(200,240,255,.045);
+      box-shadow: 0 0 18px rgba(200,240,255,.07), inset 0 1px 0 rgba(200,240,255,.08);
+    }
+    .dow-label { font-family: var(--f-mono); font-size: .62rem; font-weight: 600; color: var(--t3); letter-spacing: .04em; text-align: center; }
+    .dow-cell.dow-peak .dow-label { color: var(--t2); }
+    .dow-bar-track { height: 4px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+    .dow-bar-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, rgba(242,240,236,.3), rgba(242,240,236,.1));
+      transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .dow-cell.dow-peak .dow-bar-fill {
+      background: linear-gradient(90deg, rgba(200,240,255,.85), rgba(110,231,183,.45));
+      box-shadow: 0 0 10px rgba(200,240,255,.32);
+    }
+    .dow-val { font-family: var(--f-mono); font-size: .66rem; font-weight: 700; color: var(--t2); white-space: nowrap; text-align: right; min-width: 42px; }
+    .dow-cell.dow-peak .dow-val { color: var(--neon-rev); text-shadow: 0 0 10px rgba(200,240,255,.5); }
+  </style>
+</head>
+<body>
+
+<!-- ════ NAV ════ -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">Satyam's Store</a>
+    <div style="display:flex;align-items:center;gap:6px">
+      <a href="index.html" class="nav-link">
+        <i data-lucide="store" style="width:12px;height:12px"></i> Store
+      </a>
+      <a href="admin.html" class="nav-link-icon" title="Admin">
+        <i data-lucide="settings" style="width:14px;height:14px"></i>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<div class="stats-wrap">
+
+  <!-- Header -->
+  <div style="margin-bottom:20px">
+    <div style="font-family:var(--f-head);font-size:1.3rem;font-weight:800;color:var(--t1);letter-spacing:-.03em">Analytics</div>
+    <div style="font-size:.72rem;color:var(--t3);margin-top:3px" id="last-updated">Loading data…</div>
+  </div>
+
+  <!-- Period selector -->
+  <div class="period-bar">
+    <button class="period-btn" data-days="7">7 Days</button>
+    <button class="period-btn active" data-days="30">30 Days</button>
+    <button class="period-btn" data-days="90">90 Days</button>
+    <button class="period-btn" data-days="0">All Time</button>
+  </div>
+
+  <div id="stats-loading" class="stats-loading">
+    <div class="stats-spinner"></div>
+    Crunching your numbers…
+  </div>
+
+  <div id="stats-content" style="display:none">
+
+    <!-- KPI Strip -->
+    <div class="kpi-grid" id="kpi-grid"></div>
+    <div style="font-size:.6rem;color:var(--t3);font-family:var(--f-mono);margin-top:6px;padding:0 2px">
+      * Profit tracked from 26-Apr. Revenue includes all orders.
+    </div>
+
+    <!-- Revenue & Profit chart -->
+    <p class="stats-section-title">Revenue & Profit</p>
+    <div class="chart-card liq">
+      <div class="chart-title">
+        <i data-lucide="trending-up" style="width:12px;height:12px"></i>
+        Daily Overview
+        <span class="period-label" id="chart-period-label"></span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="revenue-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Orders per day chart -->
+    <div class="chart-card liq">
+      <div class="chart-title">
+        <i data-lucide="shopping-bag" style="width:12px;height:12px"></i>
+        Orders per Day
+      </div>
+      <div class="chart-wrap" style="height:130px">
+        <canvas id="orders-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Top items -->
+    <p class="stats-section-title">Top Items by Revenue</p>
+    <div class="chart-card liq" style="padding-bottom:4px">
+      <div id="top-items-list"></div>
+    </div>
+
+
+
+    <!-- Day of week heatmap -->
+    <p class="stats-section-title">Busiest Days</p>
+    <div class="chart-card liq">
+      <div class="dow-grid" id="dow-grid"></div>
+    </div>
+
+
+
+  </div><!-- /stats-content -->
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="shared.js"></script>
+<script>
+/* ════════════════════════════════════════
+   STATS PAGE — Satyam's Store
+   ════════════════════════════════════════ */
+
+let _period   = 30;   // days; 0 = all time
+let _orders   = [];
+let _products = [];
+let _revenueChart = null;
+let _ordersChart  = null;
+
+// Orders before this date have no purchase_price set — exclude from profit calc
+const PROFIT_START = new Date('2026-04-26T00:00:00+05:30').getTime();
+
+/* ── Period buttons ─────────────────────── */
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _period = parseInt(btn.dataset.days, 10);
+    renderAll();
+  });
+});
+
+/* ── Boot ───────────────────────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  else document.querySelector('script[src*="lucide"]')?.addEventListener('load', () => lucide.createIcons());
+
+  // Stats page is admin-only — redirect if no valid session
+  const raw = sessionStorage.getItem('sb_session');
+  if (!raw) { location.href = 'admin.html'; return; }
+  try {
+    const s = JSON.parse(raw);
+    if (!s.access_token) { location.href = 'admin.html'; return; }
+    // Check expiry
+    if (s.expires_at && Date.now() / 1000 > s.expires_at) {
+      sessionStorage.removeItem('sb_session');
+      location.href = 'admin.html';
+      return;
+    }
+  } catch { location.href = 'admin.html'; return; }
+
+  await loadData();
+});
+
+async function loadData() {
+  try {
+    const [orders, products] = await Promise.all([
+      sbGet('orders?status=eq.approved&order=created_at.asc&select=id,items,total,created_at'),
+      sbGet('products?select=id,name,price,purchase_price,hidden&order=name.asc'),
+    ]);
+    _orders   = orders  || [];
+    _products = parseProducts(products || []);
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('stats-loading').style.display = 'none';
+    document.getElementById('stats-content').style.display = 'block';
+    renderAll();
+  } catch(e) {
+    document.getElementById('stats-loading').innerHTML =
+      `<div style="color:var(--red);font-size:.74rem">Failed to load data. Please try again.</div>`;
+  }
+}
+
+/* ── IST date helpers ───────────────────── */
+// Returns "YYYY-MM-DD" in IST (UTC+5:30) for a given ms timestamp
+function istDateKey(ms) {
+  const ist = new Date(ms + 5.5 * 3600000); // shift to IST
+  return ist.toISOString().slice(0, 10);     // now safe to slice
+}
+
+// Returns start-of-day in IST as a UTC ms timestamp
+function istStartOfDay(dateStr) {
+  // dateStr = "YYYY-MM-DD" in IST; midnight IST = UTC-5h30m
+  return new Date(dateStr + 'T00:00:00+05:30').getTime();
+}
+
+/* ── Filter orders by period ────────────── */
+function filteredOrders() {
+  if (_period === 0) return _orders;
+  const todayIST   = istDateKey(Date.now());
+  const todayStart = istStartOfDay(todayIST);
+  const cutoff     = todayStart - (_period - 1) * 86400000;
+  return _orders.filter(o => {
+    const ms = _toUTCms(o.created_at);
+    return ms !== null && ms >= cutoff;
+  });
+}
+
+/* ── Derive stats ───────────────────────── */
+function deriveStats(orders) {
+  let totalRevenue = 0, totalProfit = 0, totalItems = 0;
+  const byDay     = {};  // "YYYY-MM-DD" -> { revenue, profit, orders }
+  const byItem    = {};  // item name -> { qty, revenue, profit }
+  const byDow     = [0,0,0,0,0,0,0]; // sun=0..sat=6 revenue
+
+  orders.forEach(o => {
+    const ms = _toUTCms(o.created_at);
+    if (ms === null) return; // skip orders with unparseable timestamps
+    const key     = istDateKey(ms);                    // IST date key — fixes one-day shift
+    const istDate = new Date(ms + 5.5 * 3600000);     // IST Date object for day-of-week
+    const dow     = istDate.getDay();                  // IST day-of-week
+    const hasCost = ms >= PROFIT_START; // only count profit for orders after 26 Apr
+
+    if (!byDay[key]) byDay[key] = { revenue: 0, profit: 0, orders: 0 };
+    byDay[key].orders++;
+
+    const items = Array.isArray(o.items) ? o.items : [];
+    const orderTotal = parseFloat(o.total) || 0;
+
+    // Determine whether i.sub is a unit price or a line total.
+    // Older orders saved sub = unit price; newer orders save sub = price × qty.
+    // Use o.total as ground truth: whichever interpretation produces a sum
+    // closer to o.total is correct. Falls back to treating sub as line total.
+    let subIsUnit = false;
+    if (orderTotal > 0 && items.length) {
+      const sumAsLine = items.reduce((a, i) => a + (parseFloat(i.sub) || 0), 0);
+      const sumAsUnit = items.reduce((a, i) => a + (parseFloat(i.sub) || 0) * (parseInt(i.qty, 10) || 1), 0);
+      subIsUnit = Math.abs(sumAsUnit - orderTotal) < Math.abs(sumAsLine - orderTotal);
+    }
+
+    items.forEach(i => {
+      const qty    = parseInt(i.qty, 10) || 1;
+      const rawSub = parseFloat(i.sub)   || 0;
+      const sub    = subIsUnit ? rawSub * qty : rawSub;
+      totalRevenue += sub;
+      totalItems   += qty;
+      byDay[key].revenue   += sub;
+      byDow[dow]             += sub;
+
+      // Always track items for Top Items list (revenue ranking)
+      const name = i.name || 'Unknown';
+      if (!byItem[name]) byItem[name] = { qty: 0, revenue: 0, profit: 0 };
+      byItem[name].qty     += qty;
+      byItem[name].revenue += sub;
+
+      if (hasCost) {
+        const pp  = parseFloat(i.purchase_price) > 0
+          ? parseFloat(i.purchase_price)
+          : (_products.find(p => String(p.id) === String(i.id))?.purchase_price || 0);
+        const profit = sub - pp * qty;
+        totalProfit           += profit;
+        byDay[key].profit     += profit;
+        byItem[name].profit   += profit;
+      }
+    });
+  });
+
+  // Deduct 15% expenses from all profit figures
+  totalProfit = totalProfit - (totalProfit * 0.10);
+  Object.values(byDay).forEach(d => { d.profit = d.profit - (d.profit * 0.10); });
+  Object.values(byItem).forEach(it => { it.profit = it.profit - (it.profit * 0.10); });
+
+  return { totalRevenue, totalProfit, totalItems, byDay, byItem, byDow, orderCount: orders.length };
+}
+
+/* ── Main render ────────────────────────── */
+function renderAll() {
+  const orders = filteredOrders();
+  const s      = deriveStats(orders);
+  renderKPIs(s, orders);
+  renderCharts(s);
+  renderTopItems(s);
+  renderDow(s);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/* ── KPIs ───────────────────────────────── */
+function renderKPIs(s, orders) {
+  const margin = s.totalRevenue > 0 ? (s.totalProfit / s.totalRevenue * 100) : 0;
+  const avgOrder = orders.length > 0 ? s.totalRevenue / orders.length : 0;
+
+  const kpis = [
+    { icon: 'indian-rupee', val: '₹' + fmt(s.totalRevenue), lbl: 'Revenue' },
+    { icon: 'trending-up',  val: '₹' + fmt(s.totalProfit),  lbl: 'Net Profit' },
+    { icon: 'shopping-bag', val: String(orders.length),      lbl: 'Orders' },
+    { icon: 'percent',      val: margin.toFixed(1) + '%',    lbl: 'Margin' },
+  ];
+
+  document.getElementById('kpi-grid').innerHTML = kpis.map(k => `
+    <div class="kpi-card liq">
+      <div class="kpi-icon"><i data-lucide="${k.icon}" style="width:13px;height:13px"></i></div>
+      <div class="kpi-val">${k.val}</div>
+      <div class="kpi-lbl">${k.lbl}</div>
+    </div>
+  `).join('');
+}
+
+/* ── Chart defaults factory ─────────────── */
+function buildChartDefaults(revYMax) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        enabled: true,
+        backgroundColor: 'rgba(14,14,20,.97)', titleColor: 'rgba(200,240,255,.9)', bodyColor: 'rgba(200,240,255,.45)',
+        borderColor: 'rgba(200,240,255,.14)', borderWidth: 1,
+        padding: 10, cornerRadius: 8,
+        callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y;
+            if (ctx.dataset.label === 'Orders') return ` ${v} orders`;
+            return ` ₹${v >= 1000 ? v.toLocaleString('en-IN', {maximumFractionDigits:0}) : v.toFixed(0)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: 'rgba(200,240,255,.2)', font: { family: 'JetBrains Mono', size: 9 }, maxRotation: 0, maxTicksLimit: 8 },
+        grid: { color: 'rgba(200,240,255,.04)' },
+        border: { display: false }
+      },
+      y: {
+        suggestedMax: revYMax,
+        ticks: { color: 'rgba(200,240,255,.2)', font: { family: 'JetBrains Mono', size: 9 }, callback: v => '₹' + fmtAxis(v) },
+        grid: { color: 'rgba(200,240,255,.05)' },
+        border: { display: false }
+      },
+    },
+  };
+}
+
+/* ── Charts ─────────────────────────────── */
+function renderCharts(s) {
+  const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const label   = _period === 0 ? 'All Time' : `Last ${_period} Days`;
+  document.getElementById('chart-period-label').textContent = label;
+
+
+  /* ── Default: daily granularity ── */
+  const days = Object.keys(s.byDay).sort();
+  const labels = days.map(d => {
+    const [,m,dd] = d.split('-');
+    return `${parseInt(dd)}-${MONTHS[parseInt(m)-1]}`;
+  });
+  const revenues = days.map(d => +s.byDay[d].revenue.toFixed(2));
+  const profits  = days.map(d => +s.byDay[d].profit.toFixed(2));
+  const orderCounts = days.map(d => s.byDay[d].orders);
+
+  const maxRevenue = revenues.length ? Math.max(...revenues) : 0;
+  const maxProfit  = profits.length  ? Math.max(...profits)  : 0;
+  const maxOrders  = orderCounts.length ? Math.max(...orderCounts) : 0;
+  const revYMax    = maxRevenue > 0 ? maxRevenue * 1.12 : undefined;
+  const ordYMax    = maxOrders  > 0 ? Math.ceil(maxOrders * 1.15) : undefined;
+
+  const chartDefaults = buildChartDefaults(revYMax);
+
+  /* Revenue + Profit line chart */
+  if (_revenueChart) _revenueChart.destroy();
+  _revenueChart = new Chart(document.getElementById('revenue-chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Revenue', data: revenues, borderColor: 'rgba(200,240,255,.7)', borderWidth: 1.5, pointRadius: 0, tension: .35, fill: true, backgroundColor: 'rgba(200,240,255,.04)' },
+        { label: 'Profit',  data: profits,  borderColor: 'rgba(110,231,183,.75)', borderWidth: 1.5, pointRadius: 0, tension: .35, fill: false },
+      ],
+    },
+    options: { ...chartDefaults, interaction: { mode: 'index', intersect: false } },
+  });
+
+  /* Orders bar chart */
+  if (_ordersChart) _ordersChart.destroy();
+  _ordersChart = new Chart(document.getElementById('orders-chart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Orders', data: orderCounts, backgroundColor: 'rgba(167,139,250,.18)', borderRadius: 4, borderSkipped: false, hoverBackgroundColor: 'rgba(167,139,250,.32)' }] },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: { ...chartDefaults.scales.x },
+        y: {
+          suggestedMax: ordYMax,
+          ticks: { ...chartDefaults.scales.y.ticks, callback: v => v },
+          grid: { ...chartDefaults.scales.y.grid },
+          border: { display: false }
+        },
+      },
+    },
+  });
+}
+
+/* ── Top items ───────────────────────────── */
+function renderTopItems(s) {
+  const items = Object.entries(s.byItem)
+    .map(([name, d]) => ({ name, ...d }))
+    .sort((a,b) => b.revenue - a.revenue)
+    .slice(0, 8);
+
+  const maxRev = items[0]?.revenue || 1;
+
+  document.getElementById('top-items-list').innerHTML = items.length ? items.map((item, i) => `
+    <div class="item-row">
+      <div class="item-rank">${i+1}</div>
+      <div class="item-bar-wrap">
+        <div class="item-name">${esc(item.name)}</div>
+        <div class="item-bar-track">
+          <div class="item-bar-fill" style="width:${(item.revenue/maxRev*100).toFixed(1)}%"></div>
+        </div>
+      </div>
+      <div class="item-meta">
+        ₹${fmt(item.revenue)}
+        <span>×${item.qty} sold</span>
+      </div>
+    </div>
+  `).join('') : '<div style="color:var(--t3);font-size:.74rem;padding:12px 0">No data</div>';
+}
+
+
+/* ── Day of week ─────────────────────────── */
+function renderDow(s) {
+  const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const max   = Math.max(...s.byDow, 1);
+  document.getElementById('dow-grid').innerHTML = names.map((n, i) => {
+    const v   = s.byDow[i];
+    const pct = v / max;
+    const isPeak = pct >= 0.85;
+    const barW   = (pct * 100).toFixed(1);
+    return `
+    <div class="dow-cell${isPeak ? ' dow-peak' : ''}">
+      <div class="dow-label">${n}</div>
+      <div class="dow-bar-track">
+        <div class="dow-bar-fill" style="width:${barW}%"></div>
+      </div>
+      <div class="dow-val">${v > 0 ? '₹'+fmt(v) : '—'}</div>
+    </div>`;
+  }).join('');
+}
+
+
+/* ── Helpers ─────────────────────────────── */
+// Compact format for display labels (KPI cards, item list)
+function fmt(n) {
+  n = +n;
+  if (isNaN(n)) return '0';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'k';
+  return n.toFixed(0);
+}
+
+// Axis tick format — uses cleaner breakpoints to avoid mid-scale distortion
+function fmtAxis(n) {
+  n = +n;
+  if (isNaN(n)) return '0';
+  if (n >= 10000) return (n/1000).toFixed(0) + 'k';
+  if (n >= 1000)  return (n/1000).toFixed(1) + 'k';
+  return n.toFixed(0);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
